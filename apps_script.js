@@ -1,6 +1,6 @@
 /**
  * =================================================================
- *              ** FINAL, CORRECTED SCRIPT **
+ *              ** FINAL, CORRECTED SCRIPT V2 **
  * This is the final, corrected version of the script. You MUST
  * deploy this new version to fix all communication errors.
  * =================================================================
@@ -25,7 +25,8 @@
 const SPREADSHEET_ID = "1PYPBDN1l4--LzbeLRPRb8DIvNcBdh0YrmfyFyN_0bBQ";
 const SHEET_NAME = "Sheet1";
 
-// This function is required to handle the CORS preflight request that the browser sends.
+// This function is required to handle the CORS preflight request that the browser sends
+// when the frontend makes a POST request with a 'Content-Type' header.
 function doOptions(e) {
   return ContentService.createTextOutput()
     .addHeader('Access-Control-Allow-Origin', '*')
@@ -60,7 +61,7 @@ function doPost(e) {
     const response = { status: "success", message: "Data saved successfully." };
     return ContentService.createTextOutput(JSON.stringify(response))
       .setMimeType(ContentService.MimeType.JSON)
-      .addHeader('Access-Control-Allow-Origin', '*');
+      .addHeader('Access-control-Allow-Origin', '*');
   } catch (error) {
     const response = { status: "error", message: error.message };
     return ContentService.createTextOutput(JSON.stringify(response))
