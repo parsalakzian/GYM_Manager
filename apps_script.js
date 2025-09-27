@@ -1,8 +1,8 @@
 /**
  * =================================================================
- *                        ** IMPORTANT **
- * This is a new, corrected version of the script. You MUST deploy
- * this new version to fix the bug. The old Web App URL will not work.
+ *              ** FINAL, CORS-FIXED SCRIPT **
+ * This is the final, corrected version of the script. You MUST
+ * deploy this new version to fix the CORS error.
  * =================================================================
  *
  * To use this script:
@@ -13,7 +13,7 @@
  * 5. Click "Deploy" > "New deployment".
  * 7. For "Select type", choose "Web app".
  * 8. In the "Configuration" section:
- *    - Give it a new description (e.g., "Gym Manager Backend v2").
+ *    - Give it a new description (e.g., "Gym Manager Backend v3 - CORS Fixed").
  *    - For "Execute as", select "Me".
  *    - For "Who has access", select "Anyone".
  * 9. Click "Deploy".
@@ -25,6 +25,14 @@
 const SPREADSHEET_ID = "1PYPBDN1l4--LzbeLRPRb8DIvNcBdh0YrmfyFyN_0bBQ";
 const SHEET_NAME = "Sheet1";
 
+// This function is required to handle the CORS preflight request that the browser sends.
+function doOptions(e) {
+  return ContentService.createTextOutput()
+    .addHeader('Access-Control-Allow-Origin', '*')
+    .addHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+    .addHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 function doGet(e) {
   try {
     const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
@@ -34,11 +42,11 @@ function doGet(e) {
 
     return ContentService.createTextOutput(content)
       .setMimeType(ContentService.MimeType.JSON)
-      .withSuccessCode(200);
+      .addHeader('Access-Control-Allow-Origin', '*'); // <-- CORS FIX
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.message }))
       .setMimeType(ContentService.MimeType.JSON)
-      .withSuccessCode(500);
+      .addHeader('Access-Control-Allow-Origin', '*') // <-- CORS FIX
   }
 }
 
@@ -52,17 +60,11 @@ function doPost(e) {
     const response = { status: "success", message: "Data saved successfully." };
     return ContentService.createTextOutput(JSON.stringify(response))
       .setMimeType(ContentService.MimeType.JSON)
-      .withSuccessCode(200);
+      .addHeader('Access-Control-Allow-Origin', '*'); // <-- CORS FIX
   } catch (error) {
     const response = { status: "error", message: error.message };
     return ContentService.createTextOutput(JSON.stringify(response))
       .setMimeType(ContentService.MimeType.JSON)
-      .withSuccessCode(500);
+      .addHeader('Access-Control-Allow-Origin', '*') // <-- CORS FIX
   }
 }
-
-// Note: A `doOptions` function is often needed for preflight requests when dealing with CORS.
-// However, Apps Script's ContentService handles simple POSTs from a browser context surprisingly well
-// without it, as long as the client-side fetch doesn't use a complex Content-Type that triggers a preflight.
-// The new fetch call will be structured to avoid this, making `doOptions` unnecessary for this use case.
-// The key is that the client can now properly await the response from `doPost`.
