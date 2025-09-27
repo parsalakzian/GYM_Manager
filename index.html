@@ -175,33 +175,41 @@
         try {
             const response = await fetch(WEB_APP_URL);
             if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
-            masterState = await response.json();
+            const text = await response.text();
+            masterState = text ? JSON.parse(text) : {};
             console.log("Master state loaded from backend:", masterState);
-            closeModal();
         } catch (err) {
             console.error("Fatal Error: Could not load data from backend.", err);
             showModal(`<h3>خطای بحرانی</h3><p>امکان بارگیری اطلاعات از سرور وجود ندارد. لطفاً از اتصال اینترنت خود مطمئن شده و صفحه را رفرش کنید.</p><p style="font-size:12px; color: var(--muted);">${err.message}</p>`);
+        } finally {
+            closeModal();
         }
     }
 
     async function saveMasterStateToBackend() {
         try {
-            // This uses 'sendBeacon' for better reliability on page exit, but it doesn't return the response.
-            // For critical saves, we might prefer a blocking fetch, but this is good for frequent updates.
-            const data = JSON.stringify(masterState);
-            const blob = new Blob([data], { type: 'application/json' });
-            navigator.sendBeacon(WEB_APP_URL, blob);
-            console.log("Master state save beacon sent to backend.");
+            const response = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(masterState)
+            });
+            if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+            const result = await response.json();
+            if (result.status !== 'success') {
+                throw new Error(`Server-side save failed: ${result.message}`);
+            }
+            console.log("Master state saved to backend.");
         } catch (err) {
             console.error("Fatal Error: Could not save data to backend.", err);
-            // This error might not be catchable if sendBeacon fails, it's a "fire and forget" method.
             alert('خطای بحرانی: امکان ذخیره اطلاعات در سرور وجود ندارد.');
         }
     }
 
     // --- Core Application Logic ---
-    function persist() {
-        saveMasterStateToBackend();
+    async function persist() {
+        await saveMasterStateToBackend();
     }
 
     function getSettings() {
@@ -253,9 +261,9 @@
     
     function startOnboarding(){
       let step = 0; const wizard = [stepUserPass, stepClubName, stepPrices, stepSessions]
-      function next(){ step++; if(step<wizard.length) wizard[step](); else finish() }
+      async function next(){ step++; if(step<wizard.length) await wizard[step](); else await finish() }
 
-      function stepUserPass(){
+      async function stepUserPass(){
         showModal(`<h3>راه اندازی اولیه — مرحله ۱ از ۴</h3>
           <h4>تنظیمات ورود</h4>
           <p>می‌توانید نام کاربری خود را تغییر داده و یک رمز عبور جدید و دائمی برای خود تنظیم کنید.</p>
@@ -267,7 +275,7 @@
             </div>
           </div>`);
 
-        document.getElementById('on_next').addEventListener('click', ()=>{
+        document.getElementById('on_next').addEventListener('click', async ()=>{
           const newUsername = document.getElementById('on_user').value.trim();
           const newPassword = document.getElementById('on_pass').value.trim();
           const oldUsername = currentUser;
@@ -288,35 +296,35 @@
           }
 
           masterState[currentUser].password = newPassword;
-          persist();
-          next();
+          await persist();
+          await next();
         });
       }
 
-      function stepClubName(){ showModal(`<h3>راه اندازی اولیه — مرحله ۲ از ۴</h3><h4>نام باشگاه</h4><div><input id='on_club' placeholder='نام باشگاه شما' /></div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_next2'>ادامه</button></div>`); document.getElementById('on_next2').addEventListener('click', ()=>{ getSettings().clubName = document.getElementById('on_club').value.trim() || 'باشگاه من'; persist(); next(); }); }
+      async function stepClubName(){ showModal(`<h3>راه اندازی اولیه — مرحله ۲ از ۴</h3><h4>نام باشگاه</h4><div><input id='on_club' placeholder='نام باشگاه شما' /></div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_next2'>ادامه</button></div>`); document.getElementById('on_next2').addEventListener('click', async ()=>{ getSettings().clubName = document.getElementById('on_club').value.trim() || 'باشگاه من'; await persist(); await next(); }); }
 
-      function stepPrices(){ showModal(`<h3>راه اندازی اولیه — مرحله ۳ از ۴</h3><h4>قیمت دوره‌ها (به تومان)</h4><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>
+      async function stepPrices(){ showModal(`<h3>راه اندازی اولیه — مرحله ۳ از ۴</h3><h4>قیمت دوره‌ها (به تومان)</h4><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>
         <div><label>قیمت هر جلسه</label><input id='on_session' type='number' value='50000' /></div>
         <div><label>قیمت ۱ ماهه</label><input id='on_1' type='number' value='350000' /></div>
         <div><label>قیمت ۲ ماهه</label><input id='on_2' type='number' value='650000' /></div>
         <div><label>قیمت ۳ ماهه</label><input id='on_3' type='number' value='900000' /></div>
         </div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_next3'>ادامه</button></div>`);
-        document.getElementById('on_next3').addEventListener('click', ()=>{
+        document.getElementById('on_next3').addEventListener('click', async ()=>{
           const s = getSettings();
           s.sessionPrice = Number(document.getElementById('on_session').value || 50000);
           s.oneMonthPrice = Number(document.getElementById('on_1').value || 350000);
           s.twoMonthPrice = Number(document.getElementById('on_2').value || 650000);
           s.threeMonthPrice = Number(document.getElementById('on_3').value || 900000);
-          persist();
-          next();
+          await persist();
+          await next();
         });
       }
 
-      function stepSessions(){ showModal(`<h3>راه اندازی اولیه — مرحله ۴ از ۴</h3><h4>تنظیمات پیش‌فرض</h4><div><label>تعداد جلسات پیش‌فرض در هر ماه</label><input id='on_sessions' type='number' value='8' /></div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_finish'>پایان و ذخیره</button></div>`); document.getElementById('on_finish').addEventListener('click', ()=>{ getSettings().sessionsPerMonthDefault = Number(document.getElementById('on_sessions').value || 8); finish(); }); }
+      async function stepSessions(){ showModal(`<h3>راه اندازی اولیه — مرحله ۴ از ۴</h3><h4>تنظیمات پیش‌فرض</h4><div><label>تعداد جلسات پیش‌فرض در هر ماه</label><input id='on_sessions' type='number' value='8' /></div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_finish'>پایان و ذخیره</button></div>`); document.getElementById('on_finish').addEventListener('click', async ()=>{ getSettings().sessionsPerMonthDefault = Number(document.getElementById('on_sessions').value || 8); await finish(); }); }
 
-      function finish(){
+      async function finish(){
         getSettings().setupComplete = true;
-        persist();
+        await persist();
         loadForCurrentUser();
         closeModal();
         alert('تنظیمات اولیه با موفقیت ذخیره شد. به پنل خود خوش آمدید!');
@@ -420,7 +428,7 @@
               <button class='btn ghost' onclick='(function(){document.getElementById("modalRoot").innerHTML=""})()'>انصراف</button>
           </div>
         `);
-        document.getElementById('saveSettings').addEventListener('click', () => {
+        document.getElementById('saveSettings').addEventListener('click', async () => {
             const s = getSettings();
             s.clubName = document.getElementById('s_clubName').value;
             s.sessionsPerMonthDefault = Number(document.getElementById('s_sessions').value);
@@ -434,15 +442,15 @@
                 masterState[currentUser].password = newPass;
             }
 
-            persist();
+            await persist();
             alert('تنظیمات با موفقیت ذخیره شد.');
             loadForCurrentUser();
             closeModal();
         });
-        document.getElementById('doDeleteAll').addEventListener('click', ()=>{
+        document.getElementById('doDeleteAll').addEventListener('click', async ()=>{
         if(!confirm('آیا مطمئن هستید که همه مشتریان حذف شوند؟ این عمل برگشت‌پذیر نیست.')) return;
         masterState[currentUser].customers = [];
-        persist();
+        await persist();
         renderList();
         closeModal();
         document.getElementById('detailsArea').innerHTML='<div class="muted">مشتری‌ای انتخاب نشده</div>'
@@ -513,44 +521,44 @@
     function openAddModal(){
         const settings = getSettings();
         showModal(`<h3>ثبت مشتری جدید</h3><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><div style='flex:1;min-width:200px'><label>نام</label><input id='fName' /></div><div style='flex:1;min-width:160px'><label>شماره</label><input id='fPhone' /></div></div><div style='margin-top:8px'><label>نوع</label><select id='fType'><option value='single'>تک‌جلسه‌ای</option><option value='subscription'>دوره‌ای</option></select></div><div id='subSettings' style='margin-top:8px;display:none'><label>مدت دوره</label><select id='fDuration'><option value='1'>یک ماهه</option><option value='2'>دو ماهه</option><option value='3'>سه ماهه</option></select><div style='display:flex;gap:8px;margin-top:8px'><div style='flex:1'><label>تعداد کل جلسات (خالی=پیش‌فرض)</label><input id='fTotalSessions' type='number' /></div></div></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveNew'>ذخیره</button><button class='btn ghost' id='cancelNew'>انصراف</button></div>`);
-      const fType = document.getElementById('fType'); const subSettings = document.getElementById('subSettings'); fType.addEventListener('change', ()=> { subSettings.style.display = fType.value==='subscription' ? 'block' : 'none' }); document.getElementById('cancelNew').addEventListener('click', closeModal); document.getElementById('saveNew').addEventListener('click', ()=>{
+      const fType = document.getElementById('fType'); const subSettings = document.getElementById('subSettings'); fType.addEventListener('change', ()=> { subSettings.style.display = fType.value==='subscription' ? 'block' : 'none' }); document.getElementById('cancelNew').addEventListener('click', closeModal); document.getElementById('saveNew').addEventListener('click', async ()=>{
         const name = document.getElementById('fName').value.trim(); const phone = document.getElementById('fPhone').value.trim(); const type = document.getElementById('fType').value; if(!name || !phone){ alert('نام و شماره را وارد کنید'); return }
         const base = { id: uid(), name, phone, regDate: nowISO(), lastPayment: null, visits: [], payments: [], buffet: [], notes:'', buffetDebt:0 }; if(type === 'subscription'){
           const duration = parseInt(document.getElementById('fDuration').value || '1'); const totalSessionsInput = parseInt(document.getElementById('fTotalSessions').value || '0'); const price = duration===1? settings.oneMonthPrice : duration===2? settings.twoMonthPrice : settings.threeMonthPrice; const totalSessions = totalSessionsInput>0 ? totalSessionsInput : (settings.sessionsPerMonthDefault * duration);
           base.type = 'subscription'; base.subscription = { startDate: nowISO(), endDate: addMonthsISO(nowISO(), duration), price: price, totalSessions: totalSessions, sessionsUsed: 0 }; base.balance = Number(price)
         }else{ base.type = 'single'; base.sessionsCount = 0; base.balance = 0 };
         getCustomers().push(base);
-        persist();
+        await persist();
         closeModal();
         renderList();
       }) }
     function openVisitModal(c){
         const settings = getSettings();
         showModal(`<h3>ثبت حضور — ${escapeHtml(c.name)}</h3><div style='margin-top:8px'><label>تاریخ</label><input id='vDate' type='date' value='${new Date().toISOString().slice(0,10)}' /></div><div style='margin-top:8px'><label>یادداشت</label><input id='vNote' /></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveVisit'>ثبت</button><button class='btn ghost' id='cancelVisit'>انصراف</button></div>`);
-      document.getElementById('cancelVisit').addEventListener('click', closeModal); document.getElementById('saveVisit').addEventListener('click', ()=>{ const date = document.getElementById('vDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('vNote').value; c.visits.push({date: new Date(date).toISOString(), note});
-        if(c.type==='subscription' && c.subscription){ c.subscription.sessionsUsed = (c.subscription.sessionsUsed||0) + 1 } else { c.sessionsCount = (c.sessionsCount||0) + 1; c.balance = Number(c.balance||0) + Number(settings.sessionPrice) }; c.lastPayment = c.lastPayment || null; persist(); renderList(); renderCustomerDetails(c); closeModal()
+      document.getElementById('cancelVisit').addEventListener('click', closeModal); document.getElementById('saveVisit').addEventListener('click', async ()=>{ const date = document.getElementById('vDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('vNote').value; c.visits.push({date: new Date(date).toISOString(), note});
+        if(c.type==='subscription' && c.subscription){ c.subscription.sessionsUsed = (c.subscription.sessionsUsed||0) + 1 } else { c.sessionsCount = (c.sessionsCount||0) + 1; c.balance = Number(c.balance||0) + Number(settings.sessionPrice) }; c.lastPayment = c.lastPayment || null; await persist(); renderList(); renderCustomerDetails(c); closeModal()
       }) }
     function openPaymentModal(c){ showModal(`<h3>ثبت پرداخت — ${escapeHtml(c.name)}</h3><div style='margin-top:8px'><label>مبلغ (تومان)</label><input id='pAmount' type='number' /></div><div style='margin-top:8px'><label>تاریخ</label><input id='pDate' type='date' value='${new Date().toISOString().slice(0,10)}' /></div><div style='margin-top:8px'><label>توضیحات</label><input id='pNote' /></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='savePayment'>ذخیره</button><button class='btn ghost' id='cancelPayment'>انصراف</button></div>`);
-      document.getElementById('cancelPayment').addEventListener('click', closeModal); document.getElementById('savePayment').addEventListener('click', ()=>{ const amount = parseFloat(document.getElementById('pAmount').value||0); const date = document.getElementById('pDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('pNote').value; if(amount<=0){ alert('مبلغ را وارد کنید'); return }; c.payments.push({date: new Date(date).toISOString(), amount, note}); c.balance = Number(c.balance||0) - amount; c.lastPayment = new Date(date).toISOString(); persist(); renderList(); renderCustomerDetails(c); closeModal()
+      document.getElementById('cancelPayment').addEventListener('click', closeModal); document.getElementById('savePayment').addEventListener('click', async ()=>{ const amount = parseFloat(document.getElementById('pAmount').value||0); const date = document.getElementById('pDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('pNote').value; if(amount<=0){ alert('مبلغ را وارد کنید'); return }; c.payments.push({date: new Date(date).toISOString(), amount, note}); c.balance = Number(c.balance||0) - amount; c.lastPayment = new Date(date).toISOString(); await persist(); renderList(); renderCustomerDetails(c); closeModal()
       }) }
     function openBuffetModal(c){ showModal(`<h3>ثبت خرید بوفه — ${escapeHtml(c.name)}</h3><div style='margin-top:8px'><label>مبلغ (تومان)</label><input id='bAmount' type='number' /></div><div style='margin-top:8px'><label>تاریخ</label><input id='bDate' type='date' value='${new Date().toISOString().slice(0,10)}' /></div><div style='margin-top:8px'><label>توضیحات</label><input id='bNote' /></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveBuffet'>ثبت</button><button class='btn ghost' id='cancelBuffet'>انصراف</button></div>`);
-      document.getElementById('cancelBuffet').addEventListener('click', closeModal); document.getElementById('saveBuffet').addEventListener('click', ()=>{ const amount = parseFloat(document.getElementById('bAmount').value||0); const date = document.getElementById('bDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('bNote').value; if(amount<=0){ alert('مبلغ را وارد کنید'); return }; c.buffet.push({date:new Date(date).toISOString(), amount, note}); c.buffetDebt = Number(c.buffetDebt||0) + amount; persist(); renderList(); renderCustomerDetails(c); closeModal()
+      document.getElementById('cancelBuffet').addEventListener('click', closeModal); document.getElementById('saveBuffet').addEventListener('click', async ()=>{ const amount = parseFloat(document.getElementById('bAmount').value||0); const date = document.getElementById('bDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('bNote').value; if(amount<=0){ alert('مبلغ را وارد کنید'); return }; c.buffet.push({date:new Date(date).toISOString(), amount, note}); c.buffetDebt = Number(c.buffetDebt||0) + amount; await persist(); renderList(); renderCustomerDetails(c); closeModal()
       }) }
     function openEditModal(c){ showModal(`<h3>ویرایش — ${escapeHtml(c.name)}</h3><div style='display:flex;gap:8px;flex-wrap:wrap'><div style='flex:1'><label>نام</label><input id='eName' value='${escapeHtml(c.name)}' /></div><div style='flex:1'><label>شماره</label><input id='ePhone' value='${escapeHtml(c.phone)}' /></div></div><div style='margin-top:8px'><label>یادداشت</label><textarea id='eNotes'>${escapeHtml(c.notes||'')}</textarea></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveEdit'>ذخیره</button><button class='btn warn' id='delCustomer'>حذف</button><button class='btn ghost' id='cancelEdit'>انصراف</button></div>`);
       document.getElementById('cancelEdit').addEventListener('click', closeModal);
-      document.getElementById('delCustomer').addEventListener('click', ()=>{
+      document.getElementById('delCustomer').addEventListener('click', async ()=>{
         if(!confirm('آیا از حذف این مشتری مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) return;
         const customers = getCustomers();
         const index = customers.findIndex(x=>x.id===c.id);
         if (index > -1) {
             customers.splice(index, 1);
         }
-        persist();
+        await persist();
         renderList();
         closeModal();
         document.getElementById('detailsArea').innerHTML='<div class="muted">مشتری حذف شد.</div>'
       });
-      document.getElementById('saveEdit').addEventListener('click', ()=>{ c.name = document.getElementById('eName').value.trim(); c.phone = document.getElementById('ePhone').value.trim(); c.notes = document.getElementById('eNotes').value; persist(); renderList(); renderCustomerDetails(c); closeModal() }) }
+      document.getElementById('saveEdit').addEventListener('click', async ()=>{ c.name = document.getElementById('eName').value.trim(); c.phone = document.getElementById('ePhone').value.trim(); c.notes = document.getElementById('eNotes').value; await persist(); renderList(); renderCustomerDetails(c); closeModal() }) }
 
     // Start the app
     init();
