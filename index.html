@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Gym Manager — مدیریت باشگاه</title>
+  <script src="https://apis.google.com/js/api.js"></script>
   <style>
     :root{
       --bg:#07101a; --panel:#0b1220; --muted:#9fb0c6; --accent:#2a9df4; --accent-2:#1e7adf; --danger:#ff6b6b; --glass: rgba(255,255,255,0.03); --radius:12px; font-family: "Vazirmatn", system-ui, -apple-system, "Segoe UI", Roboto, Arial;
@@ -324,10 +325,11 @@
       wizard[0]()
     }
     
-    function loadForCurrentUser(){
+    async function loadForCurrentUser(){
       if(!currentUser) return;
       settings = JSON.parse(localStorage.getItem(keySettingsFor(currentUser)) || JSON.stringify(defaultSettings));
-      state = JSON.parse(localStorage.getItem(keyFor(currentUser)) || JSON.stringify({customers:[]}));
+      await initGapi();
+      state = await loadDataFromSheet();
       document.getElementById('currentClub').textContent = settings.clubName ? settings.clubName : '';
       logoutContainer.style.display = 'block';
       renderList();
@@ -401,6 +403,12 @@
               <div><label>قیمت ۳ ماهه</label><input id='s_threeMonth' type='number' value="${settings.threeMonthPrice}"></div>
               <div style='grid-column:span 2'><label>تغییر پسورد</label><input id='sPass' type='password' placeholder='اگر نمی‌خواهید تغییر دهید خالی بگذارید' /></div>
       
+              <div style='grid-column:span 2; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; margin-top: 8px;'>
+                  <h4>تنظیمات Google Sheets</h4>
+                  <p class='muted' style='font-size:12px'>برای ذخیره داده‌ها در Google Sheet، اطلاعات زیر را وارد کنید.</p>
+              </div>
+              <div><label>API Key</label><input id='s_apiKey' value="${escapeHtml(settings.apiKey || '')}"></div>
+              <div><label>Sheet ID</label><input id='s_sheetId' value="${escapeHtml(settings.sheetId || '')}"></div>
           </div>
           <div style='margin-top:16px; display:flex; justify-content:flex-end; gap:8px;'>
                 <button class='btn warn' id='doDeleteAll'>حذف همه مشتریان</button>
@@ -415,6 +423,8 @@
             settings.oneMonthPrice = Number(document.getElementById('s_oneMonth').value);
             settings.twoMonthPrice = Number(document.getElementById('s_twoMonth').value);
             settings.threeMonthPrice = Number(document.getElementById('s_threeMonth').value);
+            settings.apiKey = document.getElementById('s_apiKey').value.trim();
+            settings.sheetId = document.getElementById('s_sheetId').value.trim();
             const newPass = document.getElementById('sPass').value.trim(); if(newPass){ const auth = JSON.parse(localStorage.getItem(`gm_auth_${currentUser}`)||'{}'); auth.password = newPass; localStorage.setItem(`gm_auth_${currentUser}`, JSON.stringify(auth)); }
         
             localStorage.setItem(keySettingsFor(currentUser), JSON.stringify(settings));
@@ -486,7 +496,7 @@
         </div>
       </div>`; detailsArea.appendChild(wrapper);
       document.getElementById('btnVisit').addEventListener('click', ()=> openVisitModal(c)); document.getElementById('btnPayment').addEventListener('click', ()=> openPaymentModal(c)); document.getElementById('btnBuffet').addEventListener('click', ()=> openBuffetModal(c)); document.getElementById('btnEdit').addEventListener('click', ()=> openEditModal(c));}
-    function persist(){ localStorage.setItem(keyFor(currentUser), JSON.stringify(state)) }
+    function persist(){ saveDataToSheet() }
     btnAdd.addEventListener('click', ()=> openAddModal())
     function openAddModal(){ showModal(`<h3>ثبت مشتری جدید</h3><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><div style='flex:1;min-width:200px'><label>نام</label><input id='fName' /></div><div style='flex:1;min-width:160px'><label>شماره</label><input id='fPhone' /></div></div><div style='margin-top:8px'><label>نوع</label><select id='fType'><option value='single'>تک‌جلسه‌ای</option><option value='subscription'>دوره‌ای</option></select></div><div id='subSettings' style='margin-top:8px;display:none'><label>مدت دوره</label><select id='fDuration'><option value='1'>یک ماهه</option><option value='2'>دو ماهه</option><option value='3'>سه ماهه</option></select><div style='display:flex;gap:8px;margin-top:8px'><div style='flex:1'><label>تعداد کل جلسات (خالی=پیش‌فرض)</label><input id='fTotalSessions' type='number' /></div></div></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveNew'>ذخیره</button><button class='btn ghost' id='cancelNew'>انصراف</button></div>`);
       const fType = document.getElementById('fType'); const subSettings = document.getElementById('subSettings'); fType.addEventListener('change', ()=> { subSettings.style.display = fType.value==='subscription' ? 'block' : 'none' }); document.getElementById('cancelNew').addEventListener('click', closeModal); document.getElementById('saveNew').addEventListener('click', ()=>{
@@ -508,6 +518,75 @@
       }) }
     function openEditModal(c){ showModal(`<h3>ویرایش — ${escapeHtml(c.name)}</h3><div style='display:flex;gap:8px;flex-wrap:wrap'><div style='flex:1'><label>نام</label><input id='eName' value='${escapeHtml(c.name)}' /></div><div style='flex:1'><label>شماره</label><input id='ePhone' value='${escapeHtml(c.phone)}' /></div></div><div style='margin-top:8px'><label>یادداشت</label><textarea id='eNotes'>${escapeHtml(c.notes||'')}</textarea></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveEdit'>ذخیره</button><button class='btn warn' id='delCustomer'>حذف</button><button class='btn ghost' id='cancelEdit'>انصراف</button></div>`);
       document.getElementById('cancelEdit').addEventListener('click', closeModal); document.getElementById('delCustomer').addEventListener('click', ()=>{ if(!confirm('آیا از حذف این مشتری مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) return; state.customers = state.customers.filter(x=>x.id!==c.id); persist(); renderList(); closeModal(); document.getElementById('detailsArea').innerHTML='<div class="muted">مشتری حذف شد.</div>' }); document.getElementById('saveEdit').addEventListener('click', ()=>{ c.name = document.getElementById('eName').value.trim(); c.phone = document.getElementById('ePhone').value.trim(); c.notes = document.getElementById('eNotes').value; persist(); renderList(); renderCustomerDetails(c); closeModal() }) }
+
+
+    // --- Google Sheets API Functions ---
+    async function initGapi() {
+        if (!settings.apiKey) {
+            console.warn("API Key is not set. Google Sheets integration is disabled.");
+            return;
+        }
+        await new Promise((resolve) => gapi.load('client', resolve));
+        await gapi.client.init({
+            apiKey: settings.apiKey,
+            discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
+        });
+    }
+
+    async function loadDataFromSheet() {
+        if (!settings.sheetId || !gapi.client.sheets) {
+            console.log("Sheet ID is not set or GAPI not initialized. Loading from localStorage.");
+            return JSON.parse(localStorage.getItem(keyFor(currentUser)) || JSON.stringify({customers:[]}));
+        }
+        try {
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: settings.sheetId,
+                range: 'A1:A1', // Check if sheet is empty
+            });
+
+            if (!response.result.values || response.result.values.length === 0) {
+                 console.log("Sheet is empty. Starting with a fresh state.");
+                 return { customers: [] };
+            }
+
+            const dataResponse = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: settings.sheetId,
+                range: 'A1',
+            });
+            const data = JSON.parse(dataResponse.result.values[0][0]);
+            console.log("Data loaded from Google Sheet:", data);
+            return data;
+        } catch (err) {
+            console.error("Error loading data from Google Sheet:", err);
+            alert('خطا در بارگیری اطلاعات از گوگل شیت. از آخرین نسخه ذخیره شده در مرورگر استفاده می‌شود.');
+            return JSON.parse(localStorage.getItem(keyFor(currentUser)) || JSON.stringify({customers:[]}));
+        }
+    }
+
+    async function saveDataToSheet() {
+        if (!settings.sheetId || !gapi.client.sheets) {
+            console.log("Sheet ID is not set or GAPI not initialized. Saving to localStorage.");
+            localStorage.setItem(keyFor(currentUser), JSON.stringify(state));
+            return;
+        }
+        try {
+            const data = JSON.stringify(state);
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: settings.sheetId,
+                range: 'A1',
+                valueInputOption: 'RAW',
+                resource: {
+                    values: [[data]]
+                }
+            });
+            console.log("Data saved to Google Sheet.");
+        } catch (err) {
+            console.error("Error saving data to Google Sheet:", err);
+            alert('خطا در ذخیره اطلاعات در گوگل شیت. اطلاعات در مرورگر شما ذخیره شد.');
+            localStorage.setItem(keyFor(currentUser), JSON.stringify(state));
+        }
+    }
+
 
     // Start the app
     init();
