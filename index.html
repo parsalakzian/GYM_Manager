@@ -144,7 +144,7 @@
     const toJalaliString = iso => { try{ const d = new Date(iso); return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'2-digit',day:'2-digit'}).format(d) }catch(e){ return (iso||'').slice(0,10) } }
 
     // --- Backend and State Config ---
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzX0-9YaenTrleJ-desCCl1yJxKuFR59WRxYQIZgDu7_763VLtkVaZZdAoiT17zlBVY/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx_R3ovD4p2gFhkUGg1Gu7Oz2YJ1bMmF8JXjNyMlutSakDWBd1dXcSgbsYRUt-xodXh/exec";
     let masterState = {}; // This will hold all data from the sheet
     let currentUser = null; // The currently logged-in username
 
