@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Gym Manager — مدیریت باشگاه</title>
-  <script src="https://apis.google.com/js/api.js"></script>
   <style>
     :root{
       --bg:#07101a; --panel:#0b1220; --muted:#9fb0c6; --accent:#2a9df4; --accent-2:#1e7adf; --danger:#ff6b6b; --glass: rgba(255,255,255,0.03); --radius:12px; font-family: "Vazirmatn", system-ui, -apple-system, "Segoe UI", Roboto, Arial;
@@ -146,10 +145,14 @@
     const addMonthsISO = (iso,months)=>{ const d=new Date(iso); d.setMonth(d.getMonth()+months); return d.toISOString() }
     const toJalaliString = iso => { try{ const d = new Date(iso); return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'2-digit',day:'2-digit'}).format(d) }catch(e){ return (iso||'').slice(0,10) } }
 
-    // storage keys
+    // --- Backend and State Config ---
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzX0-9YaenTrleJ-desCCl1yJxKuFR59WRxYQIZgDu7_763VLtkVaZZdAoiT17zlBVY/exec";
+    let masterState = {}; // This will hold data for ALL users, loaded from the backend
+    let state = { customers: [] }; // This will hold the data for the *current* user, as a reference to a part of masterState
+
+    // --- Local Storage Keys (for non-critical data) ---
     const KEY_USERS = 'gm_users'
     let currentUser = null // username
-    const keyFor = u => `gm_${u}_data`
     const keySettingsFor = u => `gm_${u}_settings`
     const keyAuthFor = u => `gm_auth_${u}`
 
@@ -164,16 +167,7 @@
       setupComplete: false
     }
 
-    // app state
-    let settings = {}
-    let state = { customers: [] } // This will hold the data for the *current* user
-    let masterState = {}; // This will hold data for ALL users, loaded from Sheets
-
-    // --- Google Sheets API Config ---
-    const API_KEY = "AIzaSyDQwyJSyh2DspLC-NfKfi5z5NAVxxc4QCA";
-    const SPREADSHEET_ID = "1PYPBDN1l4--LzbeLRPRb8DIvNcBdh0YrmfyFyN_0bBQ";
-
-    // --- FIXED: All UI refs are now defined here ---
+    // --- UI Element Refs ---
     const customerList = document.getElementById('customerList')
     const statTotal = document.getElementById('statTotal')
     const statDebt = document.getElementById('statDebt')
@@ -195,8 +189,39 @@
     }
     function closeModal(){ modalRoot.innerHTML = '' }
 
-    // --- Login and Onboarding Flow ---
+    // --- Backend Data Functions ---
+    async function loadMasterStateFromBackend() {
+        try {
+            const response = await fetch(WEB_APP_URL);
+            if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+            masterState = await response.json();
+            console.log("Master state loaded from backend:", masterState);
+        } catch (err) {
+            console.error("Fatal Error: Could not load data from backend.", err);
+            showModal(`<h3>خطای بحرانی</h3><p>امکان بارگیری اطلاعات از سرور وجود ندارد. لطفاً از اتصال اینترنت خود مطمئن شده و صفحه را رفرش کنید.</p><p style="font-size:12px; color: var(--muted);">${err.message}</p>`);
+        }
+    }
 
+    async function saveMasterStateToBackend() {
+        try {
+            const response = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                mode: 'no-cors', // Important for Apps Script web apps
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(masterState)
+            });
+            console.log("Master state saved to backend.");
+        } catch (err) {
+            console.error("Fatal Error: Could not save data to backend.", err);
+            showModal(`<h3>خطای بحرانی</h3><p>امکان ذخیره اطلاعات در سرور وجود ندارد. تغییرات اخیر شما ذخیره نشده است. لطفاً صفحه را رفرش کرده و دوباره تلاش کنید.</p><p style="font-size:12px; color: var(--muted);">${err.message}</p>`);
+        }
+    }
+
+    // --- Login and Onboarding Flow ---
     function showLogin() {
       showModal(`<div style='text-align:center'>
         <h3>ورود به پنل مدیریت</h3>
@@ -276,7 +301,6 @@
             const authData = JSON.parse(localStorage.getItem(keyAuthFor(oldUsername)) || '{}');
             const settingsData = JSON.parse(localStorage.getItem(keySettingsFor(oldUsername)) || '{}');
 
-            // Move data in masterState
             if (masterState[oldUsername]) {
               masterState[newUsername] = masterState[oldUsername];
               delete masterState[oldUsername];
@@ -284,16 +308,14 @@
 
             localStorage.setItem(keyAuthFor(newUsername), JSON.stringify(authData));
             localStorage.setItem(keySettingsFor(newUsername), JSON.stringify(settingsData));
-            
             localStorage.removeItem(keyAuthFor(oldUsername));
             localStorage.removeItem(keySettingsFor(oldUsername));
-            localStorage.removeItem(keyFor(oldUsername)); // Keep this for cleanup from older versions
 
             const newUserList = usersList.map(u => u === oldUsername ? newUsername : u);
             localStorage.setItem(KEY_USERS, JSON.stringify(newUserList));
             
             currentUser = newUsername;
-            persist(); // Save the user rename in the sheet
+            persist(); // Save the user rename to the backend
           }
 
           const auth = JSON.parse(localStorage.getItem(keyAuthFor(currentUser)) || '{}');
@@ -351,7 +373,7 @@
     }
 
     async function init(){
-      await initGapiAndLoad(); // Load all data from sheet first
+      await loadMasterStateFromBackend();
       const usersList = JSON.parse(localStorage.getItem(KEY_USERS) || '[]')
       if (usersList.length === 0) {
         const randomUser = 'user_' + uid().slice(0, 4);
@@ -361,7 +383,6 @@
         localStorage.setItem(KEY_USERS, JSON.stringify(usersList));
         localStorage.setItem(keyAuthFor(randomUser), JSON.stringify({ username: randomUser, password: randomPass }));
         localStorage.setItem(keySettingsFor(randomUser), JSON.stringify({ ...defaultSettings, setupComplete: false }));
-        // No longer creating user data in localStorage, it will be created in masterState on first login
 
         showModal(`
           <div style='text-align:center'>
@@ -383,7 +404,7 @@
       }
     }
     
-    // --- FIXED: Event Listeners restored and functions implemented ---
+    // --- Event Listeners ---
     btnExport.addEventListener('click', ()=> exportCSV(state.customers))
     function exportCSV(customers){ const headers = ['id','name','phone','type','regDate','lastPayment','balance','buffetDebt','sessionsCount','subscription_total','subscription_used','subscription_start','subscription_end','notes']; const rows = customers.map(c=>[c.id,c.name,c.phone,c.type,c.regDate || '',c.lastPayment || '',c.balance || 0,c.buffetDebt || 0,c.sessionsCount || 0,c.subscription? c.subscription.totalSessions : '', c.subscription? c.subscription.sessionsUsed : '', c.subscription? c.subscription.startDate : '', c.subscription? c.subscription.endDate : '', c.notes||'']); let csv = headers.join(',') + '\n' + rows.map(r=> r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n'); const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='gym_customers.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url) }
 
@@ -504,7 +525,7 @@
         </div>
       </div>`; detailsArea.appendChild(wrapper);
       document.getElementById('btnVisit').addEventListener('click', ()=> openVisitModal(c)); document.getElementById('btnPayment').addEventListener('click', ()=> openPaymentModal(c)); document.getElementById('btnBuffet').addEventListener('click', ()=> openBuffetModal(c)); document.getElementById('btnEdit').addEventListener('click', ()=> openEditModal(c));}
-    function persist(){ saveMasterStateToSheet() }
+    function persist(){ saveMasterStateToBackend() }
     btnAdd.addEventListener('click', ()=> openAddModal())
     function openAddModal(){ showModal(`<h3>ثبت مشتری جدید</h3><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><div style='flex:1;min-width:200px'><label>نام</label><input id='fName' /></div><div style='flex:1;min-width:160px'><label>شماره</label><input id='fPhone' /></div></div><div style='margin-top:8px'><label>نوع</label><select id='fType'><option value='single'>تک‌جلسه‌ای</option><option value='subscription'>دوره‌ای</option></select></div><div id='subSettings' style='margin-top:8px;display:none'><label>مدت دوره</label><select id='fDuration'><option value='1'>یک ماهه</option><option value='2'>دو ماهه</option><option value='3'>سه ماهه</option></select><div style='display:flex;gap:8px;margin-top:8px'><div style='flex:1'><label>تعداد کل جلسات (خالی=پیش‌فرض)</label><input id='fTotalSessions' type='number' /></div></div></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveNew'>ذخیره</button><button class='btn ghost' id='cancelNew'>انصراف</button></div>`);
       const fType = document.getElementById('fType'); const subSettings = document.getElementById('subSettings'); fType.addEventListener('change', ()=> { subSettings.style.display = fType.value==='subscription' ? 'block' : 'none' }); document.getElementById('cancelNew').addEventListener('click', closeModal); document.getElementById('saveNew').addEventListener('click', ()=>{
@@ -526,56 +547,6 @@
       }) }
     function openEditModal(c){ showModal(`<h3>ویرایش — ${escapeHtml(c.name)}</h3><div style='display:flex;gap:8px;flex-wrap:wrap'><div style='flex:1'><label>نام</label><input id='eName' value='${escapeHtml(c.name)}' /></div><div style='flex:1'><label>شماره</label><input id='ePhone' value='${escapeHtml(c.phone)}' /></div></div><div style='margin-top:8px'><label>یادداشت</label><textarea id='eNotes'>${escapeHtml(c.notes||'')}</textarea></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveEdit'>ذخیره</button><button class='btn warn' id='delCustomer'>حذف</button><button class='btn ghost' id='cancelEdit'>انصراف</button></div>`);
       document.getElementById('cancelEdit').addEventListener('click', closeModal); document.getElementById('delCustomer').addEventListener('click', ()=>{ if(!confirm('آیا از حذف این مشتری مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) return; state.customers = state.customers.filter(x=>x.id!==c.id); persist(); renderList(); closeModal(); document.getElementById('detailsArea').innerHTML='<div class="muted">مشتری حذف شد.</div>' }); document.getElementById('saveEdit').addEventListener('click', ()=>{ c.name = document.getElementById('eName').value.trim(); c.phone = document.getElementById('ePhone').value.trim(); c.notes = document.getElementById('eNotes').value; persist(); renderList(); renderCustomerDetails(c); closeModal() }) }
-
-    // --- Google Sheets API Functions ---
-    async function initGapiAndLoad() {
-        await new Promise((resolve) => gapi.load('client', resolve));
-        await gapi.client.init({
-            apiKey: API_KEY,
-            discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
-        });
-        masterState = await loadMasterStateFromSheet();
-    }
-
-    async function loadMasterStateFromSheet() {
-        try {
-            const response = await gapi.client.sheets.spreadsheets.values.get({
-                spreadsheetId: SPREADSHEET_ID,
-                range: 'A1',
-            });
-
-            if (response.result.values && response.result.values.length > 0) {
-                const data = JSON.parse(response.result.values[0][0]);
-                console.log("Master state loaded from Google Sheet:", data);
-                return data;
-            } else {
-                console.log("Sheet is empty. Initializing a new master state.");
-                return {}; // Return empty object if sheet is empty
-            }
-        } catch (err) {
-            console.error("Fatal Error: Could not load data from Google Sheet.", err);
-            showModal(`<h3>خطای بحرانی</h3><p>امکان بارگیری اطلاعات از سرور وجود ندارد. لطفاً از درستی تنظیمات مطمئن شده و صفحه را رفرش کنید.</p><p style="font-size:12px; color: var(--muted);">${err.message}</p>`);
-            return {}; // Return empty object on error to prevent total crash
-        }
-    }
-
-    async function saveMasterStateToSheet() {
-        try {
-            const data = JSON.stringify(masterState);
-            await gapi.client.sheets.spreadsheets.values.update({
-                spreadsheetId: SPREADSHEET_ID,
-                range: 'A1',
-                valueInputOption: 'RAW',
-                resource: {
-                    values: [[data]]
-                }
-            });
-            console.log("Master state saved to Google Sheet.");
-        } catch (err) {
-            console.error("Fatal Error: Could not save data to Google Sheet.", err);
-            showModal(`<h3>خطای بحرانی</h3><p>امکان ذخیره اطلاعات در سرور وجود ندارد. تغییرات اخیر شما ذخیره نشده است. لطفاً صفحه را رفرش کرده و دوباره تلاش کنید.</p><p style="font-size:12px; color: var(--muted);">${err.message}</p>`);
-        }
-    }
 
     // Start the app
     init();
