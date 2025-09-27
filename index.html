@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Gym Manager — مدیریت باشگاه</title>
-  <script src="https://apis.google.com/js/api.js"></script>
   <style>
     :root{
       --bg:#07101a; --panel:#0b1220; --muted:#9fb0c6; --accent:#2a9df4; --accent-2:#1e7adf; --danger:#ff6b6b; --glass: rgba(255,255,255,0.03); --radius:12px; font-family: "Vazirmatn", system-ui, -apple-system, "Segoe UI", Roboto, Arial;
@@ -57,9 +56,7 @@
     <header>
       <div class="brand">
         <div class="logo">GM</div>
-        <div>
-          <h1 id="currentClub"></h1>
-        </div>
+        <div><h1 id="currentClub"></h1></div>
       </div>
       <div class="controls">
         <button class="btn ghost" id="btnSettings">تنظیمات</button>
@@ -117,55 +114,58 @@
     const toJalaliString = iso => { try{ const d = new Date(iso); return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'2-digit',day:'2-digit'}).format(d) }catch(e){ return (iso||'').slice(0,10) } }
 
     // --- Backend and State Config ---
-    const API_KEY = "AIzaSyDQwyJSyh2DspLC-NfKfi5z5NAVxxc4QCA";
-    const SPREADSHEET_ID = "1PYPBDN1l4--LzbeLRPRb8DIvNcBdh0YrmfyFyN_0bBQ";
-    const SHEET_RANGE = "Sheet1!A1";
+    const WEB_APP_URL = "YOUR_NEW_WEB_APP_URL_HERE"; // !!! IMPORTANT: PASTE YOUR NEW URL HERE
     let masterState = {};
     let currentUser = null;
 
     // --- UI Element Refs ---
-    const customerList = document.getElementById('customerList'), statTotal = document.getElementById('statTotal'), statDebt = document.getElementById('statDebt'), searchInput = document.getElementById('searchInput'), btnAdd = document.getElementById('btnAdd'), modalRoot = document.getElementById('modalRoot'), btnExport = document.getElementById('btnExport'), btnReports = document.getElementById('btnReports'), btnSettings = document.getElementById('btnSettings'), btnClear = document.getElementById('btnClear'), currentClub = document.getElementById('currentClub'), btnLogout = document.getElementById('btnLogout'), logoutContainer = document.getElementById('logout-container');
+    const customerList=document.getElementById('customerList'),statTotal=document.getElementById('statTotal'),statDebt=document.getElementById('statDebt'),searchInput=document.getElementById('searchInput'),btnAdd=document.getElementById('btnAdd'),modalRoot=document.getElementById('modalRoot'),btnExport=document.getElementById('btnExport'),btnReports=document.getElementById('btnReports'),btnSettings=document.getElementById('btnSettings'),btnClear=document.getElementById('btnClear'),currentClub=document.getElementById('currentClub'),btnLogout=document.getElementById('btnLogout'),logoutContainer=document.getElementById('logout-container');
 
     function showModal(html){ modalRoot.innerHTML = `<div class='modal-backdrop'><div class='modal'>${html}</div></div>`; }
     function closeModal(){ modalRoot.innerHTML = '' }
 
-    // --- Google Sheets API Functions ---
-    async function initGapiAndLoad() {
+    // --- Backend Data Functions ---
+    async function loadMasterStateFromBackend() {
+        if (WEB_APP_URL === "YOUR_NEW_WEB_APP_URL_HERE") {
+            showModal(`<h3>خطای راه‌اندازی</h3><p>شما باید URL وب اپ جدید خود را در فایل index.html جایگزین کنید.</p>`);
+            return Promise.reject("URL not set");
+        }
         showModal(`<h3>در حال بارگیری اطلاعات...</h3>`);
         try {
-            await new Promise((resolve, reject) => gapi.load('client', {callback: resolve, onerror: reject}));
-            await gapi.client.init({ apiKey: API_KEY, discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"] });
-            await loadMasterStateFromSheet();
+            const response = await fetch(WEB_APP_URL);
+            if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+            const text = await response.text();
+            masterState = text ? JSON.parse(text) : {};
+            console.log("Master state loaded from backend:", masterState);
         } catch (err) {
-             console.error("Fatal Error: Could not initialize Google API or load data.", err);
-             const errorMsg = err.result ? err.result.error.message : err.message;
-             showModal(`<h3>خطای بحرانی</h3><p>امکان بارگیری اطلاعات از سرور وجود ندارد. مطمئن شوید API Key و شناسه شیت درست است و شیت برای این کلید قابل دسترس است.</p><p style="font-size:12px; color: var(--muted);">${escapeHtml(errorMsg)}</p>`);
-             throw err;
+            console.error("Fatal Error: Could not load data from backend.", err);
+            showModal(`<h3>خطای بحرانی</h3><p>امکان بارگیری اطلاعات از سرور وجود ندارد. لطفاً از اتصال اینترنت خود مطمئن شده و صفحه را رفرش کنید.</p><p style="font-size:12px; color: var(--muted);">${err.message}</p>`);
+            throw err;
         } finally {
             closeModal();
         }
     }
 
-    async function loadMasterStateFromSheet() {
-        const response = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: SHEET_RANGE });
-        const data = response.result.values ? response.result.values[0][0] : '{}';
-        masterState = JSON.parse(data);
-        console.log("Master state loaded from Sheet:", masterState);
-    }
-
-    async function saveMasterStateToSheet() {
+    async function saveMasterStateToBackend() {
         try {
-            await gapi.client.sheets.spreadsheets.values.update({ spreadsheetId: SPREADSHEET_ID, range: SHEET_RANGE, valueInputOption: 'RAW', resource: { values: [[JSON.stringify(masterState)]] } });
-            console.log("Master state saved to Sheet.");
+            const response = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(masterState)
+            });
+            if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+            const result = await response.json();
+            if (result.status !== 'success') throw new Error(`Server-side save failed: ${result.message}`);
+            console.log("Master state saved to backend.");
         } catch (err) {
-            console.error("Fatal Error: Could not save data to Sheet.", err);
+            console.error("Fatal Error: Could not save data to backend.", err);
             alert('خطای بحرانی: امکان ذخیره اطلاعات در سرور وجود ندارد.');
             throw err;
         }
     }
 
     // --- Core Application Logic ---
-    async function persist() { await saveMasterStateToSheet(); }
+    async function persist() { await saveMasterStateToBackend(); }
     function getSettings() { return masterState[currentUser].settings; }
     function getCustomers() { return masterState[currentUser].customers; }
 
@@ -220,17 +220,17 @@
 
     // --- Application Entry Point ---
     try {
-      await initGapiAndLoad();
+      await loadMasterStateFromBackend();
       if (Object.keys(masterState).length === 0) {
         const randomUser = 'user_' + uid().slice(0, 4), randomPass = Math.random().toString(36).slice(2, 8);
         masterState[randomUser] = { password: randomPass, settings: { clubName: 'باشگاه من', sessionPrice: 50000, oneMonthPrice: 350000, twoMonthPrice: 650000, threeMonthPrice: 900000, sessionsPerMonthDefault: 8, setupComplete: false }, customers: [] };
-        await saveMasterStateToSheet(); // GUARANTEED SAVE for first user
+        await saveMasterStateToBackend(); // GUARANTEED SAVE for first user
         showModal(`<h3>به Gym Manager خوش آمدید!</h3><p>این اولین اجرای برنامه است. یک حساب کاربری برای شما ساخته شد. لطفاً این اطلاعات را یادداشت کنید.</p><div style='background:var(--bg); padding:12px; border-radius:8px; margin:12px 0;'><p>نام کاربری: <strong style='color:var(--accent); user-select:all;'>${randomUser}</strong></p><p>رمز عبور: <strong style='color:var(--accent); user-select:all;'>${randomPass}</strong></p></div><button class='btn' id='proceedToLogin'>فهمیدم، ادامه برای ورود</button>`);
         document.getElementById('proceedToLogin').addEventListener('click', () => { closeModal(); showLogin(); });
       } else {
         showLogin();
       }
-    } catch (e) { /* Error is already handled in initGapiAndLoad, do nothing here */ }
+    } catch (e) { /* Error is already handled in loadMasterStateFromBackend, do nothing here */ }
     
     // --- Event Listeners ---
     btnExport.addEventListener('click', ()=> exportCSV(getCustomers()))
