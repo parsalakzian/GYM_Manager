@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gym Manager — مدیریت باشگاه</title>
+  <style>
+    :root{
+      --bg:#07101a; --panel:#0b1220; --muted:#9fb0c6; --accent:#2a9df4; --accent-2:#1e7adf; --danger:#ff6b6b; --glass: rgba(255,255,255,0.03); --radius:12px; font-family: "Vazirmatn", system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0}
+    body{background:linear-gradient(180deg,var(--bg),#041019);color:#e6eef8;-webkit-font-smoothing:antialiased;padding:0}
+
+    /* layout */
+    .app{max-width:1200px;margin:0 auto;padding:16px;display:grid;gap:14px}
+    header{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,#08121a,#07101a);padding:12px;border-radius:12px}
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-weight:800;color:#022833}
+    h1{margin:0;font-size:16px}
+    .subtitle{color:var(--muted);font-size:12px}
+    .controls{display:flex;gap:8px; align-items: center;}
+    .btn{background:var(--accent);border:none;color:#022833;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
+    .btn.warn{background:var(--danger);color:#200}
+
+    main{display:grid;grid-template-columns:360px 1fr;gap:14px}
+    .panel{background:linear-gradient(180deg,#071320,#041219);border-radius:12px;padding:12px}
+    .workspace{background:linear-gradient(180deg,#081621,#04101a);border-radius:12px;padding:12px;min-height:60vh}
+
+    .search{display:flex;gap:8px}
+    .search input{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    .chips{display:flex;gap:8px;margin-top:10px}
+    .chip{padding:8px 10px;border-radius:999px;background:rgba(255,255,255,0.02);font-size:13px;color:var(--muted);cursor:pointer}
+    .chip.active{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#012033;font-weight:800}
+
+    .list{margin-top:12px;max-height:60vh;overflow:auto;padding-right:6px}
+    .card{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;margin-bottom:8px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));cursor:pointer}
+
+    .meta{display:flex;flex-direction:column}
+    .meta .name{font-weight:700}
+    .meta .muted{color:var(--muted);font-size:12px}
+
+    .workspace .topbar{display:flex;justify-content:space-between;align-items:center}
+    .workspace table{width:100%;border-collapse:collapse;margin-top:12px}
+    .workspace th, .workspace td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.02);text-align:right}
+    .stat{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px}
+
+    /* modal */
+    .modal-backdrop{position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(2,6,23,0.6);display:flex;align-items:center;justify-content:center;z-index:90}
+    .modal{width:100%;max-width:760px;background:linear-gradient(180deg,#06121a,#041019);padding:18px;border-radius:12px}
+
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+
+    /* responsive */
+    @media(max-width:900px){
+      main{grid-template-columns:1fr}
+      .panel{order:2}
+      .workspace{order:1}
+      .list{max-height:40vh}
+      .modal{height:95vh;overflow:auto}
+    }
+
+    footer{color:var(--muted);text-align:center;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="logo">GM</div>
+        <div>
+          <h1 id="currentClub"></h1>
+          <!--<div class="subtitle">نسخه لوکال — داده‌ها بر اساس یوزر جدا ذخیره می‌شود</div>-->
+        </div>
+      </div>
+      <div class="controls">
+        
+        <button class="btn ghost" id="btnSettings">تنظیمات</button>
+        <button class="btn ghost" id="btnReports">گزارش‌ها</button>
+        <button class="btn ghost" id="btnExport">خروجی CSV</button>
+        <div id="logout-container" style="display: none; border-right: 1px solid rgba(255,255,255,0.1); padding-right: 8px; margin-right: 2px;">
+            <button class="btn warn" id="btnLogout">خروج</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="topbar">
+          <div>
+            <h2 id="workspaceTitle">لیست مشتریان</h2>
+          </div>
+        </div>
+        <div class="search">
+          <input id="searchInput" placeholder="جستجو با نام یا شماره" />
+          <button class="btn ghost" id="btnClear">پاک کن</button>
+        </div>
+        <div class="chips">
+          <div class="chip active" data-filter="all">همه</div>
+          <div class="chip" data-filter="sub">دوره‌ای</div>
+          <div class="chip" data-filter="single">تک‌جلسه‌ای</div>
+          <div class="chip" id="chipDebtors">بدهکارها</div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <div class="stat" style="flex:1;text-align:center"><div class="muted">مشتریان</div><div id="statTotal" style="font-weight:800">0</div></div>
+          <div class="stat" style="flex:1;text-align:center"><div class="muted">جمع بدهی (تومان)</div><div id="statDebt" style="font-weight:800">0</div></div>
+        </div>
+
+        <div class="list" id="customerList"></div>
+      </section>
+
+      <section class="workspace">
+        <div class="topbar">
+          <div>
+            <h2 id="workspaceTitle">کنترل مشتری</h2>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn" id="btnAdd">ثبت مشتری</button>
+            
+          </div>
+        </div>
+
+        <div id="detailsArea" style="margin-top:14px">
+          <div class="muted">مشتری‌ انتخاب نشده — یک کارت از لیست سمت چپ را انتخاب کن.</div>
+        </div>
+
+      </section>
+    </main>
+
+    <footer>parsalakzian-OminiCorp.Com</footer>
+  </div>
+
+  <div id="modalRoot"></div>
+
+  <script>
+  (function(){
+    // utilities
+    const uid = ()=> Math.random().toString(36).slice(2,9)
+    const escapeHtml = s => String(s||'').replace(/[&<>\"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+    const formatNumber = n => Number(n||0).toLocaleString('fa-IR')
+    const nowISO = ()=> new Date().toISOString()
+    const addMonthsISO = (iso,months)=>{ const d=new Date(iso); d.setMonth(d.getMonth()+months); return d.toISOString() }
+    const toJalaliString = iso => { try{ const d = new Date(iso); return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'2-digit',day:'2-digit'}).format(d) }catch(e){ return (iso||'').slice(0,10) } }
+
+    // storage keys
+    const KEY_USERS = 'gm_users'
+    let currentUser = null // username
+    const keyFor = u => `gm_${u}_data`
+    const keySettingsFor = u => `gm_${u}_settings`
+    const keyAuthFor = u => `gm_auth_${u}`
+
+    // default settings template
+    const defaultSettings = {
+      clubName: 'باشگاه من',
+      sessionPrice: 50000,
+      oneMonthPrice: 350000,
+      twoMonthPrice: 650000,
+      threeMonthPrice: 900000,
+      sessionsPerMonthDefault: 8,
+      setupComplete: false
+    }
+
+    // app state
+    let settings = {}
+    let state = { customers: [] }
+
+    // --- FIXED: All UI refs are now defined here ---
+    const customerList = document.getElementById('customerList')
+    const statTotal = document.getElementById('statTotal')
+    const statDebt = document.getElementById('statDebt')
+    const searchInput = document.getElementById('searchInput')
+    const btnAdd = document.getElementById('btnAdd')
+    const modalRoot = document.getElementById('modalRoot')
+    const btnExport = document.getElementById('btnExport')
+    const btnReports = document.getElementById('btnReports')
+    const btnSettings = document.getElementById('btnSettings')
+    const btnClear = document.getElementById('btnClear')
+    const btnDebtReport = document.getElementById('btnDebtReport')
+    const currentClub = document.getElementById('currentClub')
+    const btnLogout = document.getElementById('btnLogout')
+    const logoutContainer = document.getElementById('logout-container')
+    
+    // modal helpers
+    function showModal(html){ 
+      modalRoot.innerHTML = `<div class='modal-backdrop'><div class='modal'>${html}</div></div>`;
+    }
+    function closeModal(){ modalRoot.innerHTML = '' }
+
+    // --- Login and Onboarding Flow ---
+
+    function showLogin() {
+      showModal(`<div style='text-align:center'>
+        <h3>ورود به پنل مدیریت</h3>
+        <div style='display:flex;gap:8px;flex-direction:column;margin-top:12px'>
+          <input id='authUser' placeholder='نام کاربری' />
+          <input id='authPass' placeholder='رمز عبور' type='password' />
+          <div style='display:flex;gap:8px;justify-content:center;margin-top:8px'>
+            <button class='btn' id='loginBtn'>ورود</button>
+          </div>
+          <div id='authMsg' style='color:#ff9b9b; min-height: 20px;'></div>
+        </div>
+      </div>`)
+
+      document.getElementById('loginBtn').addEventListener('click', () => {
+        const u = document.getElementById('authUser').value.trim()
+        const p = document.getElementById('authPass').value.trim()
+        if (!u || !p) {
+          document.getElementById('authMsg').textContent = 'نام کاربری و رمز را وارد کنید'
+          return
+        }
+        const usersList = JSON.parse(localStorage.getItem(KEY_USERS) || '[]')
+        if (!usersList.includes(u)) {
+          document.getElementById('authMsg').textContent = 'کاربر پیدا نشد'
+          return
+        }
+        const stored = JSON.parse(localStorage.getItem(keyAuthFor(u)) || '{}')
+        if (stored.password !== p) {
+          document.getElementById('authMsg').textContent = 'رمز اشتباه است'
+          return
+        }
+
+        currentUser = u
+        const userSettings = JSON.parse(localStorage.getItem(keySettingsFor(currentUser)) || '{}')
+
+        if (userSettings.setupComplete) {
+          loadForCurrentUser()
+          closeModal()
+        } else {
+          closeModal()
+          startOnboarding()
+        }
+      })
+    }
+    
+    function startOnboarding(){
+      let step = 0; const wizard = [stepUserPass, stepClubName, stepPrices, stepSessions]
+      function next(){ step++; if(step<wizard.length) wizard[step](); else finish() }
+
+      function stepUserPass(){
+        showModal(`<h3>راه اندازی اولیه — مرحله ۱ از ۴</h3>
+          <h4>تنظیمات ورود</h4>
+          <p>می‌توانید نام کاربری خود را تغییر داده و یک رمز عبور جدید و دائمی برای خود تنظیم کنید.</p>
+          <div style='display:flex;gap:8px;flex-direction:column'>
+            <div><label>نام کاربری</label><input id='on_user' value='${escapeHtml(currentUser)}' /></div>
+            <div><label>رمز عبور جدید</label><input id='on_pass' type='password' placeholder='رمز جدید را وارد کنید' /></div>
+            <div style='display:flex;gap:8px;justify-content:flex-end;margin-top:8px'>
+              <button class='btn' id='on_next'>ادامه</button>
+            </div>
+          </div>`)
+
+        document.getElementById('on_next').addEventListener('click', ()=>{
+          const newUsername = document.getElementById('on_user').value.trim();
+          const newPassword = document.getElementById('on_pass').value.trim();
+          const oldUsername = currentUser;
+
+          if (!newUsername || !newPassword) {
+            alert('نام کاربری و رمز عبور جدید را وارد کنید.');
+            return;
+          }
+
+          if (newUsername !== oldUsername) {
+            const usersList = JSON.parse(localStorage.getItem(KEY_USERS) || '[]');
+            if (usersList.includes(newUsername)) {
+              alert('این نام کاربری قبلا استفاده شده است. لطفاً نام دیگری انتخاب کنید.');
+              return;
+            }
+            const authData = JSON.parse(localStorage.getItem(keyAuthFor(oldUsername)) || '{}');
+            const settingsData = JSON.parse(localStorage.getItem(keySettingsFor(oldUsername)) || '{}');
+            const appData = JSON.parse(localStorage.getItem(keyFor(oldUsername)) || '{}');
+
+            localStorage.setItem(keyAuthFor(newUsername), JSON.stringify(authData));
+            localStorage.setItem(keySettingsFor(newUsername), JSON.stringify(settingsData));
+            localStorage.setItem(keyFor(newUsername), JSON.stringify(appData));
+            
+            localStorage.removeItem(keyAuthFor(oldUsername));
+            localStorage.removeItem(keySettingsFor(oldUsername));
+            localStorage.removeItem(keyFor(oldUsername));
+
+            const newUserList = usersList.map(u => u === oldUsername ? newUsername : u);
+            localStorage.setItem(KEY_USERS, JSON.stringify(newUserList));
+            
+            currentUser = newUsername;
+          }
+
+          const auth = JSON.parse(localStorage.getItem(keyAuthFor(currentUser)) || '{}');
+          auth.password = newPassword;
+          localStorage.setItem(keyAuthFor(currentUser), JSON.stringify(auth));
+          next();
+        })
+      }
+
+      function stepClubName(){ showModal(`<h3>راه اندازی اولیه — مرحله ۲ از ۴</h3><h4>نام باشگاه</h4><div><input id='on_club' placeholder='نام باشگاه شما' /></div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_next2'>ادامه</button></div>`); document.getElementById('on_next2').addEventListener('click', ()=>{ const name=document.getElementById('on_club').value.trim()||defaultSettings.clubName; const s=JSON.parse(localStorage.getItem(keySettingsFor(currentUser))||'{}'); s.clubName=name; localStorage.setItem(keySettingsFor(currentUser), JSON.stringify(s)); next() }) }
+
+      function stepPrices(){ showModal(`<h3>راه اندازی اولیه — مرحله ۳ از ۴</h3><h4>قیمت دوره‌ها (به تومان)</h4><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>
+        <div><label>قیمت هر جلسه</label><input id='on_session' type='number' value='${defaultSettings.sessionPrice}' /></div>
+        <div><label>قیمت ۱ ماهه</label><input id='on_1' type='number' value='${defaultSettings.oneMonthPrice}' /></div>
+        <div><label>قیمت ۲ ماهه</label><input id='on_2' type='number' value='${defaultSettings.twoMonthPrice}' /></div>
+        <div><label>قیمت ۳ ماهه</label><input id='on_3' type='number' value='${defaultSettings.threeMonthPrice}' /></div>
+        </div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_next3'>ادامه</button></div>`);
+        document.getElementById('on_next3').addEventListener('click', ()=>{
+          const s = JSON.parse(localStorage.getItem(keySettingsFor(currentUser))||'{}')
+          s.sessionPrice = Number(document.getElementById('on_session').value||defaultSettings.sessionPrice)
+          s.oneMonthPrice = Number(document.getElementById('on_1').value||defaultSettings.oneMonthPrice)
+          s.twoMonthPrice = Number(document.getElementById('on_2').value||defaultSettings.twoMonthPrice)
+          s.threeMonthPrice = Number(document.getElementById('on_3').value||defaultSettings.threeMonthPrice)
+          localStorage.setItem(keySettingsFor(currentUser), JSON.stringify(s))
+          next()
+        }) }
+
+      function stepSessions(){ showModal(`<h3>راه اندازی اولیه — مرحله ۴ از ۴</h3><h4>تنظیمات پیش‌فرض</h4><div><label>تعداد جلسات پیش‌فرض در هر ماه</label><input id='on_sessions' type='number' value='${defaultSettings.sessionsPerMonthDefault}' /></div><div style='display:flex;justify-content:flex-end;margin-top:8px'><button class='btn' id='on_finish'>پایان و ذخیره</button></div>`); document.getElementById('on_finish').addEventListener('click', ()=>{ const s = JSON.parse(localStorage.getItem(keySettingsFor(currentUser))||'{}'); s.sessionsPerMonthDefault = Number(document.getElementById('on_sessions').value||defaultSettings.sessionsPerMonthDefault); localStorage.setItem(keySettingsFor(currentUser), JSON.stringify(s)); finish() }) }
+
+      function finish(){
+        const s = JSON.parse(localStorage.getItem(keySettingsFor(currentUser)) || '{}');
+        s.setupComplete = true;
+        localStorage.setItem(keySettingsFor(currentUser), JSON.stringify(s));
+        loadForCurrentUser();
+        closeModal();
+        alert('تنظیمات اولیه با موفقیت ذخیره شد. به پنل خود خوش آمدید!');
+      }
+
+      wizard[0]()
+    }
+    
+    function loadForCurrentUser(){
+      if(!currentUser) return;
+      settings = JSON.parse(localStorage.getItem(keySettingsFor(currentUser)) || JSON.stringify(defaultSettings));
+      state = JSON.parse(localStorage.getItem(keyFor(currentUser)) || JSON.stringify({customers:[]}));
+      document.getElementById('currentClub').textContent = settings.clubName ? settings.clubName : '';
+      logoutContainer.style.display = 'block';
+      renderList();
+    }
+
+    function init(){
+      const usersList = JSON.parse(localStorage.getItem(KEY_USERS) || '[]')
+      if (usersList.length === 0) {
+        const randomUser = 'user_' + uid().slice(0, 4);
+        const randomPass = Math.random().toString(36).slice(2, 8);
+
+        usersList.push(randomUser);
+        localStorage.setItem(KEY_USERS, JSON.stringify(usersList));
+        localStorage.setItem(keyAuthFor(randomUser), JSON.stringify({ username: randomUser, password: randomPass }));
+        localStorage.setItem(keySettingsFor(randomUser), JSON.stringify({ ...defaultSettings, setupComplete: false }));
+        localStorage.setItem(keyFor(randomUser), JSON.stringify({ customers: [] }));
+
+        showModal(`
+          <div style='text-align:center'>
+            <h3>به Gym Manager خوش آمدید!</h3>
+            <p>برای شروع، یک حساب کاربری برای شما ساخته شد. لطفاً این اطلاعات را یادداشت کنید.</p>
+            <div style='background:var(--bg); padding:12px; border-radius:8px; margin:12px 0;'>
+              <p>نام کاربری: <strong style='color:var(--accent); user-select:all;'>${randomUser}</strong></p>
+              <p>رمز عبور: <strong style='color:var(--accent); user-select:all;'>${randomPass}</strong></p>
+            </div>
+            <button class='btn' id='proceedToLogin'>فهمیدم، ادامه برای ورود</button>
+          </div>
+        `);
+        document.getElementById('proceedToLogin').addEventListener('click', () => {
+          closeModal();
+          showLogin();
+        });
+      } else {
+        showLogin();
+      }
+    }
+    
+    // --- FIXED: Event Listeners restored and functions implemented ---
+    btnExport.addEventListener('click', ()=> exportCSV(state.customers))
+    function exportCSV(customers){ const headers = ['id','name','phone','type','regDate','lastPayment','balance','buffetDebt','sessionsCount','subscription_total','subscription_used','subscription_start','subscription_end','notes']; const rows = customers.map(c=>[c.id,c.name,c.phone,c.type,c.regDate || '',c.lastPayment || '',c.balance || 0,c.buffetDebt || 0,c.sessionsCount || 0,c.subscription? c.subscription.totalSessions : '', c.subscription? c.subscription.sessionsUsed : '', c.subscription? c.subscription.startDate : '', c.subscription? c.subscription.endDate : '', c.notes||'']); let csv = headers.join(',') + '\n' + rows.map(r=> r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n'); const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='gym_customers.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url) }
+
+    btnLogout.addEventListener('click', () => {
+        if (confirm('آیا برای خروج از حساب کاربری مطمئن هستید؟')) {
+            location.reload();
+        }
+    });
+
+    btnClear.addEventListener('click', () => {
+        searchInput.value = '';
+        renderList();
+    });
+
+    searchInput.addEventListener('input', () => renderList());
+
+    document.querySelectorAll('.chip').forEach(chip => {
+        chip.addEventListener('click', (e) => {
+            document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            renderList();
+        });
+    });
+
+    btnSettings.addEventListener('click', () => {
+        showModal(`<h3>تنظیمات باشگاه</h3>
+          <div style='display:grid; grid-template-columns:1fr 1fr; gap:12px;'>
+              <div><label>نام باشگاه</label><input id='s_clubName' value="${escapeHtml(settings.clubName)}"></div>
+              <div><label>تعداد جلسات پیش‌فرض در ماه</label><input id='s_sessions' type='number' value="${settings.sessionsPerMonthDefault}"></div>
+              <div><label>قیمت هر جلسه</label><input id='s_sessionPrice' type='number' value="${settings.sessionPrice}"></div>
+              <div><label>قیمت ۱ ماهه</label><input id='s_oneMonth' type='number' value="${settings.oneMonthPrice}"></div>
+              <div><label>قیمت ۲ ماهه</label><input id='s_twoMonth' type='number' value="${settings.twoMonthPrice}"></div>
+              <div><label>قیمت ۳ ماهه</label><input id='s_threeMonth' type='number' value="${settings.threeMonthPrice}"></div>
+              <div style='grid-column:span 2'><label>تغییر پسورد</label><input id='sPass' type='password' placeholder='اگر نمی‌خواهید تغییر دهید خالی بگذارید' /></div>
+      
+          </div>
+          <div style='margin-top:16px; display:flex; justify-content:flex-end; gap:8px;'>
+                <button class='btn warn' id='doDeleteAll'>حذف همه مشتریان</button>
+              <button class='btn' id='saveSettings'>ذخیره تغییرات</button>
+              <button class='btn ghost' onclick='(function(){document.getElementById("modalRoot").innerHTML=""})()'>انصراف</button>
+          </div>
+        `);
+        document.getElementById('saveSettings').addEventListener('click', () => {
+            settings.clubName = document.getElementById('s_clubName').value;
+            settings.sessionsPerMonthDefault = Number(document.getElementById('s_sessions').value);
+            settings.sessionPrice = Number(document.getElementById('s_sessionPrice').value);
+            settings.oneMonthPrice = Number(document.getElementById('s_oneMonth').value);
+            settings.twoMonthPrice = Number(document.getElementById('s_twoMonth').value);
+            settings.threeMonthPrice = Number(document.getElementById('s_threeMonth').value);
+            const newPass = document.getElementById('sPass').value.trim(); if(newPass){ const auth = JSON.parse(localStorage.getItem(`gm_auth_${currentUser}`)||'{}'); auth.password = newPass; localStorage.setItem(`gm_auth_${currentUser}`, JSON.stringify(auth)); }
+        
+            localStorage.setItem(keySettingsFor(currentUser), JSON.stringify(settings));
+            alert('تنظیمات با موفقیت ذخیره شد.');
+            loadForCurrentUser(); // To update club name display
+            closeModal();
+        });
+        document.getElementById('doDeleteAll').addEventListener('click', ()=>{
+        if(!confirm('آیا مطمئن هستید که همه مشتریان حذف شوند؟ این عمل برگشت‌پذیر نیست.')) return;
+        state.customers = []; persist(); renderList(); closeModal(); document.getElementById('detailsArea').innerHTML='<div class="muted">مشتری‌ای انتخاب نشده</div>'
+      })
+    });
+
+    btnReports.addEventListener('click', () => {
+        const totalDebt = (state.customers||[]).reduce((sum, c) => sum + (Number(c.balance||0) + Number(c.buffetDebt||0)), 0);
+        const debtorsCount = (state.customers||[]).filter(c => (Number(c.balance||0) + Number(c.buffetDebt||0)) > 0).length;
+        showModal(`<h3>گزارش کلی</h3>
+            <div style='display:grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align:center;'>
+                <div class='stat'><div>تعداد کل مشتریان</div><strong style='font-size:20px;'>${state.customers.length}</strong></div>
+                <div class='stat'><div>تعداد مشتریان بدهکار</div><strong style='font-size:20px;'>${debtorsCount}</strong></div>
+                <div class='stat' style='grid-column: 1 / -1;'><div >مجموع کل بدهی (تومان)</div><strong style='font-size:24px; color:var(--danger)'>${formatNumber(totalDebt)}</strong></div>
+            </div>
+             <div style='margin-top:16px; display:flex; justify-content:flex-end; gap:8px;'>
+              <button class='btn' onclick='(function(){document.getElementById("modalRoot").innerHTML=""})()'>بستن</button>
+          </div>
+        `);
+    });
+
+
+    // --- Customer and UI Functions ---
+    function renderList(){ 
+        customerList.innerHTML=''; 
+        const q=(searchInput.value||'').trim().toLowerCase(); 
+        let activeFilter='all'; 
+        document.querySelectorAll('.chip').forEach(ch=>{ if(ch.classList.contains('active')) activeFilter = ch.dataset.filter || (ch.id==='chipDebtors'?'debt':'all') })
+        const arr = (state.customers||[]).filter(c=>{ if(activeFilter==='sub' && c.type!=='subscription') return false; if(activeFilter==='single' && c.type!=='single') return false; if(activeFilter==='debt' && (Number(c.balance||0)+Number(c.buffetDebt||0))<=0) return false; if(!q) return true; return (c.name||'').toLowerCase().includes(q) || (c.phone||'').toLowerCase().includes(q) })
+        arr.sort((a,b)=> (b.balance + b.buffetDebt) - (a.balance + a.buffetDebt) )
+        arr.forEach(c=>{ const el=document.createElement('div'); el.className='card'; el.dataset.id=c.id; el.innerHTML = `<div style='display:flex;gap:10px;align-items:center'><div style='width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#072733,#0b3a50);display:flex;align-items:center;justify-content:center;font-weight:800'>${(c.name||'')[0]||'؟'}</div><div class='meta'><div class='name'>${escapeHtml(c.name||'—')}</div><div class='muted'>${escapeHtml(c.phone||'—')} • ثبت: ${toJalaliString(c.regDate)}</div></div></div><div style='text-align:left'><div style='margin-bottom:6px'><span class='muted' style='font-size:12px'>نوع</span> <strong>${c.type==='subscription'?'دوره‌ای':'تک‌جلسه‌ای'}</strong></div><div class='muted tiny'>بدهی:</div><div style='font-weight:800'>${formatNumber(c.balance + c.buffetDebt)} تومان</div></div>`; el.addEventListener('click', ()=> openCustomer(c.id)); customerList.appendChild(el) })
+        statTotal.textContent = (state.customers||[]).length; const totalDebt = (state.customers||[]).reduce((s,c)=> s + (Number(c.balance||0) + Number(c.buffetDebt||0)),0); statDebt.textContent = formatNumber(totalDebt)
+    }
+    function openCustomer(id){ const c = (state.customers||[]).find(x=>x.id===id); if(!c) return; renderCustomerDetails(c) }
+    function renderCustomerDetails(c){ const detailsArea = document.getElementById('detailsArea'); detailsArea.innerHTML=''; const wrapper = document.createElement('div'); wrapper.innerHTML = `
+      <div style='display:flex;justify-content:space-between;gap:12px;align-items:center'>
+        <div><h3 style='margin:0'>${escapeHtml(c.name)}</h3><div class='muted'>${escapeHtml(c.phone)} — ثبت: ${toJalaliString(c.regDate)}</div></div>
+        <div style='text-align:left'><div class='muted' style='font-size:13px'>بدهی کل</div><div style='font-weight:800;font-size:18px'>${formatNumber(c.balance + c.buffetDebt)} تومان</div></div>
+      </div>
+      <div style='display:flex;gap:8px;margin-top:12px;flex-wrap:wrap'><button class='btn' id='btnVisit'>ثبت حضور</button><button class='btn ghost' id='btnPayment'>ثبت پرداخت</button><button class='btn ghost' id='btnBuffet'>ثبت بوفه</button><button class='btn ghost' id='btnEdit'>ویرایش</button></div>
+      <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-top:12px'>
+        <div class='stat'><div class='muted'>آخرین پرداخت</div><div>${c.lastPayment? toJalaliString(c.lastPayment): '-'}</div></div>
+        <div class='stat'><div class='muted'>جلسات رفته</div><div>${c.type==='subscription' ? (c.subscription? (c.subscription.sessionsUsed||0) : 0) : (c.sessionsCount||0)}</div></div>
+        <div class='stat'><div class='muted'>جلسات باقی</div><div>${c.type==='subscription' && c.subscription ? Math.max(0, (c.subscription.totalSessions||0) - (c.subscription.sessionsUsed||0)) : '-'}</div></div>
+        <div class='stat'><div class='muted'>خرید بوفه</div><div>${formatNumber(c.buffetDebt||0)} تومان</div></div>
+      </div>
+      <div style='margin-top:12px'>
+        <h4 style='margin:0 0 8px 0'>سابقه</h4>
+        <div style='display:flex;gap:12px;flex-direction:column'>
+          <div style='background:rgba(255,255,255,0.02);padding:10px;border-radius:8px'>
+            <strong>ورودها (${(c.visits||[]).length})</strong>
+            <ul>${(c.visits||[]).slice().reverse().map(v=>`<li>${toJalaliString(v.date)} — ${escapeHtml(v.note||'حضور ثبت شد')}</li>`).join('')}</ul>
+          </div>
+          <div style='background:rgba(255,255,255,0.02);padding:10px;border-radius:8px'>
+            <strong>بوفه</strong>
+            <ul>${((c.buffet||[])).slice().reverse().map(p=>`<li>${toJalaliString(p.date)} — ${formatNumber(p.amount||0)} تومان — ${escapeHtml(p.note||'')}</li>`).join('')}</ul>
+          </div>
+          <div style='background:rgba(255,255,255,0.02);padding:10px;border-radius:8px'>
+            <strong>پرداخت ها</strong>
+            <ul>${((c.payments||[])).slice().reverse().map(p=>`<li>${toJalaliString(p.date)} — ${formatNumber(p.amount||0)} تومان — ${escapeHtml(p.note||'')}</li>`).join('')}</ul>
+          </div>
+        </div>
+      </div>`; detailsArea.appendChild(wrapper);
+      document.getElementById('btnVisit').addEventListener('click', ()=> openVisitModal(c)); document.getElementById('btnPayment').addEventListener('click', ()=> openPaymentModal(c)); document.getElementById('btnBuffet').addEventListener('click', ()=> openBuffetModal(c)); document.getElementById('btnEdit').addEventListener('click', ()=> openEditModal(c));}
+    function persist(){ localStorage.setItem(keyFor(currentUser), JSON.stringify(state)) }
+    btnAdd.addEventListener('click', ()=> openAddModal())
+    function openAddModal(){ showModal(`<h3>ثبت مشتری جدید</h3><div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><div style='flex:1;min-width:200px'><label>نام</label><input id='fName' /></div><div style='flex:1;min-width:160px'><label>شماره</label><input id='fPhone' /></div></div><div style='margin-top:8px'><label>نوع</label><select id='fType'><option value='single'>تک‌جلسه‌ای</option><option value='subscription'>دوره‌ای</option></select></div><div id='subSettings' style='margin-top:8px;display:none'><label>مدت دوره</label><select id='fDuration'><option value='1'>یک ماهه</option><option value='2'>دو ماهه</option><option value='3'>سه ماهه</option></select><div style='display:flex;gap:8px;margin-top:8px'><div style='flex:1'><label>تعداد کل جلسات (خالی=پیش‌فرض)</label><input id='fTotalSessions' type='number' /></div></div></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveNew'>ذخیره</button><button class='btn ghost' id='cancelNew'>انصراف</button></div>`);
+      const fType = document.getElementById('fType'); const subSettings = document.getElementById('subSettings'); fType.addEventListener('change', ()=> { subSettings.style.display = fType.value==='subscription' ? 'block' : 'none' }); document.getElementById('cancelNew').addEventListener('click', closeModal); document.getElementById('saveNew').addEventListener('click', ()=>{
+        const name = document.getElementById('fName').value.trim(); const phone = document.getElementById('fPhone').value.trim(); const type = document.getElementById('fType').value; if(!name || !phone){ alert('نام و شماره را وارد کنید'); return }
+        const base = { id: uid(), name, phone, regDate: nowISO(), lastPayment: null, visits: [], payments: [], buffet: [], notes:'', buffetDebt:0 }; if(type === 'subscription'){
+          const duration = parseInt(document.getElementById('fDuration').value || '1'); const totalSessionsInput = parseInt(document.getElementById('fTotalSessions').value || '0'); const price = duration===1? settings.oneMonthPrice : duration===2? settings.twoMonthPrice : settings.threeMonthPrice; const totalSessions = totalSessionsInput>0 ? totalSessionsInput : (settings.sessionsPerMonthDefault * duration);
+          base.type = 'subscription'; base.subscription = { startDate: nowISO(), endDate: addMonthsISO(nowISO(), duration), price: price, totalSessions: totalSessions, sessionsUsed: 0 }; base.balance = Number(price)
+        }else{ base.type = 'single'; base.sessionsCount = 0; base.balance = 0 }; state.customers.push(base); persist(); closeModal(); renderList();
+      }) }
+    function openVisitModal(c){ showModal(`<h3>ثبت حضور — ${escapeHtml(c.name)}</h3><div style='margin-top:8px'><label>تاریخ</label><input id='vDate' type='date' value='${new Date().toISOString().slice(0,10)}' /></div><div style='margin-top:8px'><label>یادداشت</label><input id='vNote' /></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveVisit'>ثبت</button><button class='btn ghost' id='cancelVisit'>انصراف</button></div>`);
+      document.getElementById('cancelVisit').addEventListener('click', closeModal); document.getElementById('saveVisit').addEventListener('click', ()=>{ const date = document.getElementById('vDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('vNote').value; c.visits.push({date: new Date(date).toISOString(), note});
+        if(c.type==='subscription' && c.subscription){ c.subscription.sessionsUsed = (c.subscription.sessionsUsed||0) + 1 } else { c.sessionsCount = (c.sessionsCount||0) + 1; c.balance = Number(c.balance||0) + Number(settings.sessionPrice) }; c.lastPayment = c.lastPayment || null; persist(); renderList(); renderCustomerDetails(c); closeModal()
+      }) }
+    function openPaymentModal(c){ showModal(`<h3>ثبت پرداخت — ${escapeHtml(c.name)}</h3><div style='margin-top:8px'><label>مبلغ (تومان)</label><input id='pAmount' type='number' /></div><div style='margin-top:8px'><label>تاریخ</label><input id='pDate' type='date' value='${new Date().toISOString().slice(0,10)}' /></div><div style='margin-top:8px'><label>توضیحات</label><input id='pNote' /></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='savePayment'>ذخیره</button><button class='btn ghost' id='cancelPayment'>انصراف</button></div>`);
+      document.getElementById('cancelPayment').addEventListener('click', closeModal); document.getElementById('savePayment').addEventListener('click', ()=>{ const amount = parseFloat(document.getElementById('pAmount').value||0); const date = document.getElementById('pDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('pNote').value; if(amount<=0){ alert('مبلغ را وارد کنید'); return }; c.payments.push({date: new Date(date).toISOString(), amount, note}); c.balance = Number(c.balance||0) - amount; c.lastPayment = new Date(date).toISOString(); persist(); renderList(); renderCustomerDetails(c); closeModal()
+      }) }
+    function openBuffetModal(c){ showModal(`<h3>ثبت خرید بوفه — ${escapeHtml(c.name)}</h3><div style='margin-top:8px'><label>مبلغ (تومان)</label><input id='bAmount' type='number' /></div><div style='margin-top:8px'><label>تاریخ</label><input id='bDate' type='date' value='${new Date().toISOString().slice(0,10)}' /></div><div style='margin-top:8px'><label>توضیحات</label><input id='bNote' /></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveBuffet'>ثبت</button><button class='btn ghost' id='cancelBuffet'>انصراف</button></div>`);
+      document.getElementById('cancelBuffet').addEventListener('click', closeModal); document.getElementById('saveBuffet').addEventListener('click', ()=>{ const amount = parseFloat(document.getElementById('bAmount').value||0); const date = document.getElementById('bDate').value || new Date().toISOString().slice(0,10); const note = document.getElementById('bNote').value; if(amount<=0){ alert('مبلغ را وارد کنید'); return }; c.buffet.push({date:new Date(date).toISOString(), amount, note}); c.buffetDebt = Number(c.buffetDebt||0) + amount; persist(); renderList(); renderCustomerDetails(c); closeModal()
+      }) }
+    function openEditModal(c){ showModal(`<h3>ویرایش — ${escapeHtml(c.name)}</h3><div style='display:flex;gap:8px;flex-wrap:wrap'><div style='flex:1'><label>نام</label><input id='eName' value='${escapeHtml(c.name)}' /></div><div style='flex:1'><label>شماره</label><input id='ePhone' value='${escapeHtml(c.phone)}' /></div></div><div style='margin-top:8px'><label>یادداشت</label><textarea id='eNotes'>${escapeHtml(c.notes||'')}</textarea></div><div style='margin-top:12px;display:flex;gap:8px;justify-content:flex-end'><button class='btn' id='saveEdit'>ذخیره</button><button class='btn warn' id='delCustomer'>حذف</button><button class='btn ghost' id='cancelEdit'>انصراف</button></div>`);
+      document.getElementById('cancelEdit').addEventListener('click', closeModal); document.getElementById('delCustomer').addEventListener('click', ()=>{ if(!confirm('آیا از حذف این مشتری مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) return; state.customers = state.customers.filter(x=>x.id!==c.id); persist(); renderList(); closeModal(); document.getElementById('detailsArea').innerHTML='<div class="muted">مشتری حذف شد.</div>' }); document.getElementById('saveEdit').addEventListener('click', ()=>{ c.name = document.getElementById('eName').value.trim(); c.phone = document.getElementById('ePhone').value.trim(); c.notes = document.getElementById('eNotes').value; persist(); renderList(); renderCustomerDetails(c); closeModal() }) }
+
+    // Start the app
+    init();
+
+  })();
+  </script>
+</body>
+</html>
+
+
