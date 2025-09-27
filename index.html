@@ -175,7 +175,6 @@
         try {
             const response = await fetch(WEB_APP_URL, {
               redirect: "follow",
-              mode: "no-cors",
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             });
             if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
